@@ -22,29 +22,26 @@ export default async function handler(req, res) {
     from = to = fmt(now);
   }
 
-  const mcpUrl = `https://mcp.utmify.com.br/mcp/?token=${TOKEN}&resources=gs,gm`;
-
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        mcp_servers: [{ type: 'url', url: mcpUrl, name: 'utmify' }],
-        messages: [{
-          role: 'user',
-          content: `Busque campanhas Meta Ads do dashboard id="${DASH_ID}" de ${from}T00:00:00-03:00 até ${to}T23:59:59-03:00, status ACTIVE e PAUSED.
-Retorne SOMENTE um JSON array sem nenhum texto, markdown ou explicação. Máximo 15 campanhas, ordenadas por gasto decrescente:
-[{"nome":"","gasto":0,"faturamento":0,"lucro":0,"roi":null,"roas":null,"vendas":0,"status":"ACTIVE","cpa":null}]
-Valores monetários em reais.`
-        }]
-      })
+    const url = `https://mcp.utmify.com.br/api/dashboards/${DASH_ID}/meta/campaigns?from=${from}T00:00:00-03:00&to=${to}T23:59:59-03:00`;
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
     });
-    const data = await resp.json();
-    const text = data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    res.status(200).json(JSON.parse(clean));
+    const raw = await resp.json();
+
+    const camps = (raw.results || []).slice(0, 15).map(c => ({
+      nome: c.name,
+      gasto: (c.spend || 0) / 100,
+      faturamento: (c.revenue || 0) / 100,
+      lucro: (c.profit || 0) / 100,
+      roi: c.roi !== null ? c.roi : null,
+      roas: c.roas !== null ? c.roas : null,
+      vendas: c.approvedOrdersCount || 0,
+      status: c.status,
+      cpa: c.cpa !== null ? (c.cpa / 100) : null
+    }));
+
+    res.status(200).json(camps);
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
