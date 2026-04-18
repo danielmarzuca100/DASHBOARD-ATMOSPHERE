@@ -3,7 +3,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  const TOKEN = process.env.UTM_TOKEN;
+  const UTM_TOKEN = process.env.UTM_TOKEN;
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
   const DASH_ID = '66188c1e6dbe942a8d1849ee';
   const period = req.query.period || 'today';
 
@@ -22,34 +23,17 @@ export default async function handler(req, res) {
     from = to = fmt(now);
   }
 
+  const mcpUrl = `https://mcp.utmify.com.br/mcp/?token=${UTM_TOKEN}&resources=gs,gm`;
+
   try {
-    const url = `https://mcp.utmify.com.br/api/dashboards/${DASH_ID}/summary?from=${from}T00:00:00-03:00&to=${to}T23:59:59-03:00`;
-    const resp = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
-    });
-    const raw = await resp.json();
-
-    const spent = (raw.ads?.spent || 0) / 100;
-    const revenue = (raw.comissions?.gross || 0) / 100;
-    const lucro = (raw.analytics?.profit || 0) / 100;
-    const roi = raw.analytics?.roi !== null ? raw.analytics.roi : null;
-    const roas = raw.analytics?.roas !== null ? raw.analytics.roas : null;
-    const vendas = raw.ordersCount?.total || 0;
-    const vendasAprovadas = raw.ordersCount?.approved || 0;
-    const cliques = raw.ads?.clicks || 0;
-    const cpa = raw.analytics?.cpa !== null ? (raw.analytics.cpa / 100) : null;
-    const ticketMedio = raw.analytics?.avgTicket !== null ? (raw.analytics.avgTicket / 100) : null;
-
-    const lucroByHour = (raw.profitByHourNet || [])
-      .filter(h => h.cents !== 0)
-      .map(h => ({ hora: h.hour, valor: h.cents / 100 }));
-
-    const produtos = (raw.ordersCount?.byProductName || [])
-      .filter(p => p.count > 0)
-      .map(p => ({ nome: p.productName, faturamento: (p.revenue || 0) / 100, vendas: p.count }));
-
-    res.status(200).json({ gasto: spent, faturamento: revenue, lucro, roi, roas, vendas, vendasAprovadas, cliques, cpa, ticketMedio, lucroByHour, produtos });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-}
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        mcp_servers: [{ type: 'url', url: mcpUrl, name: 'utmify' }],
