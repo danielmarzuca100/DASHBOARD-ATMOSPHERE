@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+const handler = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
@@ -37,3 +37,19 @@ export default async function handler(req, res) {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         mcp_servers: [{ type: 'url', url: mcpUrl, name: 'utmify' }],
+        messages: [{
+          role: 'user',
+          content: `Busque o resumo do dashboard id="${DASH_ID}" de ${from}T00:00:00-03:00 até ${to}T23:59:59-03:00. Retorne SOMENTE este JSON sem nenhum texto extra: {"gasto":0,"faturamento":0,"lucro":0,"roi":null,"roas":null,"vendas":0,"vendasAprovadas":0,"cliques":0,"cpa":null,"ticketMedio":null,"lucroByHour":[{"hora":0,"valor":0}],"produtos":[{"nome":"","faturamento":0,"vendas":0}]}`
+        }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    res.status(200).json(JSON.parse(clean));
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+module.exports = handler;
